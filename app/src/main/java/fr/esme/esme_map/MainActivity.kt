@@ -50,13 +50,23 @@ import fr.esme.esme_map.model.User
 import java.io.IOException
 import java.lang.Exception
 import java.util.*
+import android.widget.EditText
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import java.io.DataOutputStream
 
 var devices = java.util.ArrayList<BluetoothDevice>()
 var devicesMap = HashMap<String, BluetoothDevice>()
 var mArrayAdapter: ArrayAdapter<String>? = null
 val uuid: UUID = UUID.fromString("8989063a-c9af-463a-b3f1-f21d9b2b827b")
-var message = ""
+var message = "toto"
 var statei = 0
+var myPosition : Position? = null
+val getPositionLiveData: MutableLiveData<POI> by lazy {
+    MutableLiveData<POI>()
+}
+
+
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface {
     private val TAG = MainActivity::class.qualifiedName
@@ -67,8 +77,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
     private val USER_ACTIVITY = 2
     private lateinit var fusedLocationClient : FusedLocationProviderClient
 
+    private var textView: String? = null
+
+
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
+        viewModel.getPOIFromViewModel()
         viewModel.getPOIFromViewModel()
         viewModel.getPositionFromViewModel()
 
@@ -95,8 +109,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
             showPOI(Gson().fromJson<POI>(t, POI::class.java))
         }
     }
-
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -142,6 +154,7 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
 
         viewModel.myPositionLiveData.observe(this, { position ->
             showMyPosition(position)
+            myPosition = position
         })
 
 
@@ -185,6 +198,11 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
             locationCallback,
             Looper.getMainLooper()
         )
+
+        //getUser
+        getPositionLiveData.observe(this, { poi ->
+            showPOI(poi)
+        })
     }
 
     //TODO show POI
@@ -273,6 +291,8 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
 
     }
 
+
+
     override fun onStart() {
         super.onStart()
         Log.d(TAG, "onStart")
@@ -284,7 +304,6 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, UserClickInterface
         Log.d(TAG, "onResume")
     }
 
-    var myPosition : Location? = null
 
     override fun onStop() {
         super.onStop()
@@ -345,8 +364,11 @@ class BluetoothClient(device: BluetoothDevice): Thread() {
 
         Log.i("client", "Connecting")
         Log.i("client", "send to :"+devices.toString())
-        this.socket.connect()
-        val mmBuffer: ByteArray = ByteArray(1024)
+        if(!this.socket.isConnected){
+            this.socket.connect()
+        }
+
+        val mmBuffer: ByteArray = Gson().toJson(myPosition).toByteArray()
         Log.i("client", "Sending")
         val outputStream = this.socket.outputStream
         val inputStream = this.socket.inputStream
@@ -359,10 +381,6 @@ class BluetoothClient(device: BluetoothDevice): Thread() {
             statei=0
         } catch(e: Exception) {
             Log.e("client", "Cannot send", e)
-        } finally {
-            outputStream.close()
-            inputStream.close()
-            this.socket.close()
         }
     }
 
@@ -412,9 +430,12 @@ class BluetoothServerController(activity: MainActivity) : Thread() {
     }
 }
 
+
+
 class BluetoothServer(private val activity: MainActivity, private val socket: BluetoothSocket): Thread() {
     private val inputStream = this.socket.inputStream
     private val outputStream = this.socket.outputStream
+
 
     override fun run() {
         try {
@@ -425,7 +446,6 @@ class BluetoothServer(private val activity: MainActivity, private val socket: Bl
             val text = String(bytes)
             Log.i("server", "Message received")
             Log.i("server", text)
-            //activity.appendText(text)
         } catch (e: Exception) {
             Log.e("client", "Cannot read data", e)
         } finally {
